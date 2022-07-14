@@ -90,9 +90,7 @@ export namespace cwt
 
         private parse_feature_file(file: string)
         {
-            let content = fs.readFileSync(file, 'utf-8').toString().split('\n');
-            let regex_feature = new RegExp("(?<=Feature:).*");
-    
+            let regex_feature = new RegExp("(?<=Feature:).*");    
             let reader = rd.createInterface(fs.createReadStream(file))
             
             // TODO check if  i++ instead of ++i
