@@ -1,6 +1,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as rd from 'readline';
 import * as vscode from 'vscode';
 
 export namespace cwt
@@ -20,9 +21,6 @@ export namespace cwt
             this.children = children;
             this.file = file;
             this.line = line;
-
-            console.log('creating item:'+label+' '+file+':'+line);
-
           }
     }
     
@@ -34,10 +32,6 @@ export namespace cwt
 
         public constructor() 
         {
-            if (vscode.workspace.workspaceFolders) {
-                this.read_directory(vscode.workspace.workspaceFolders[0].uri.fsPath);
-            } 
-            vscode.window.showInformationMessage('created tree!');
             vscode.commands.registerCommand('cwt_cucumber.item_clicked', r => this.item_clicked(r));
             vscode.commands.registerCommand('cwt_cucumber.refresh', () => this.refresh());
         }
@@ -98,13 +92,28 @@ export namespace cwt
         {
             let content = fs.readFileSync(file, 'utf-8').toString().split('\n');
             let regex_feature = new RegExp("(?<=Feature:).*");
-        			
-            for (let i = 0; i < content.length; i++) {
-                var feature = content[i].match(regex_feature);
-                if (feature) {
-                    this.m_data.push(new tree_item(feature[0], undefined, file, i));
+    
+            let reader = rd.createInterface(fs.createReadStream(file))
+            
+            // TODO check if  i++ instead of ++i
+            const line_counter = ((i = 0) => () => ++i)();
+
+            reader.on("line", (line : string, line_number : number = line_counter()) => {
+                console.log(line_number + ' ' + line);
+                let feature_title = line.match(regex_feature);
+                if (feature_title) {
+                    this.m_data.push(new tree_item(feature_title[0], undefined, file, line_number));
                 }
-            }	
+            });
+
+            
+
+            // for (let i = 0; i < content.length; i++) {
+            //     var feature = content[i].match(regex_feature);
+            //     if (feature) {
+            //         this.m_data.push(new tree_item(feature[0], undefined, file, i));
+            //     }
+            // }	
         }
 
 

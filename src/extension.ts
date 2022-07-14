@@ -5,6 +5,7 @@ export function activate(context: vscode.ExtensionContext)
 {
 	let tree = new cwt.tree_view();
 	vscode.window.registerTreeDataProvider('cwt_cucumber', tree);
+	tree.refresh();
 }
 
 export function deactivate() {}
