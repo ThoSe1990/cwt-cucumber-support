@@ -11,17 +11,19 @@ export namespace cwt
         file: string | undefined;
         line: number | undefined;
 
-        children: tree_item[] | undefined;
+        children: tree_item[] = [];
 
-        constructor(label: string, children?: tree_item[], file?: string, line?: number) {
-            super(
-                label,
-                children === undefined ? vscode.TreeItemCollapsibleState.None : vscode.TreeItemCollapsibleState.Expanded
-            );
-            this.children = children;
+        constructor(label: string, file?: string, line?: number) {
+            super(label, vscode.TreeItemCollapsibleState.None);
             this.file = file;
             this.line = line;
-          }
+            this.collapsibleState = vscode.TreeItemCollapsibleState.None;
+        }
+
+        public make_collapsible () {
+            this.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+        }
+        
     }
     
     export class tree_view implements vscode.TreeDataProvider<tree_item>
@@ -60,11 +62,12 @@ export namespace cwt
     
         public refresh()
         {
-            this.m_data = [];
+            // TODO: error/notification no workspace folder opened...
             if (vscode.workspace.workspaceFolders) {
+                this.m_data = [];
                 this.read_directory(vscode.workspace.workspaceFolders[0].uri.fsPath);
+                this.m_onDidChangeTreeData.fire(undefined);
             } 
-            this.m_onDidChangeTreeData.fire(undefined);
         }
 
         private read_directory(dir: string)
@@ -74,7 +77,6 @@ export namespace cwt
                 if (fs.statSync(current).isFile())
                 {
                     if(current.endsWith('.feature')) {
-                        console.log(current);
                         this.parse_feature_file(current);
                     } 
                 } else {
@@ -83,41 +85,27 @@ export namespace cwt
             });
         }
 
-        private add_tree_item(item : tree_item)
-        {
-            this.m_data.push(item);
-        }
-
         private parse_feature_file(file: string)
         {
-            let regex_feature = new RegExp("(?<=Feature:).*");    
+            const regex_feature = new RegExp("(?<=Feature:).*");
+            const regex_scenario = new RegExp("(?<=Scenario:).*");
             let reader = rd.createInterface(fs.createReadStream(file))
             
             // TODO check if  i++ instead of ++i
             const line_counter = ((i = 0) => () => ++i)();
 
             reader.on("line", (line : string, line_number : number = line_counter()) => {
-                console.log(line_number + ' ' + line);
-                let feature_title = line.match(regex_feature);
-                if (feature_title) {
-                    this.m_data.push(new tree_item(feature_title[0], undefined, file, line_number));
+
+                let is_feature = line.match(regex_feature);
+                if (is_feature) {
+                    this.m_data.push(new tree_item(is_feature[0], file, line_number));
+                }
+                let is_scenario = line.match(regex_scenario);
+                if (is_scenario) {
+                    this.m_data.at(-1)?.children.push(new tree_item(is_scenario[0], file, line_number));
+                    this.m_data.at(-1)?.make_collapsible();
                 }
             });
-
-            
-
-            // for (let i = 0; i < content.length; i++) {
-            //     var feature = content[i].match(regex_feature);
-            //     if (feature) {
-            //         this.m_data.push(new tree_item(feature[0], undefined, file, i));
-            //     }
-            // }	
         }
-
-
-
     }
-    
-
-
 }
