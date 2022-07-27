@@ -30,6 +30,7 @@ export namespace cwt
     {
         private m_data : tree_item [] = [];
         private m_onDidChangeTreeData: vscode.EventEmitter<tree_item | undefined> = new vscode.EventEmitter<tree_item | undefined>();
+        
         readonly onDidChangeTreeData ? : vscode.Event<tree_item | undefined> = this.m_onDidChangeTreeData.event;
 
         public constructor()  {
