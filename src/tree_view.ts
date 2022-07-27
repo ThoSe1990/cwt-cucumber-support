@@ -8,22 +8,22 @@ export namespace cwt
 {
     class tree_item extends vscode.TreeItem 
     {
-        file: string | undefined;
-        line: number | undefined;
+        readonly file: string | undefined;
+        readonly line: number | undefined;
 
-        children: tree_item[] = [];
+        readonly children: tree_item[] = [];
 
-        constructor(label: string, file?: string, line?: number) {
+        constructor(label: string, file: string, line: number) {
             super(label, vscode.TreeItemCollapsibleState.None);
             this.file = file;
             this.line = line;
             this.collapsibleState = vscode.TreeItemCollapsibleState.None;
         }
 
-        public make_collapsible () {
+        public add_child (child : tree_item) {
             this.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+            this.children.push(child);
         }
-        
     }
     
     export class tree_view implements vscode.TreeDataProvider<tree_item>
@@ -32,20 +32,17 @@ export namespace cwt
         private m_onDidChangeTreeData: vscode.EventEmitter<tree_item | undefined> = new vscode.EventEmitter<tree_item | undefined>();
         readonly onDidChangeTreeData ? : vscode.Event<tree_item | undefined> = this.m_onDidChangeTreeData.event;
 
-        public constructor() 
-        {
+        public constructor()  {
             vscode.commands.registerCommand('cwt_cucumber.item_clicked', r => this.item_clicked(r));
             vscode.commands.registerCommand('cwt_cucumber.refresh', () => this.refresh());
         }
 
-        public getTreeItem(element: tree_item): vscode.TreeItem|Thenable<vscode.TreeItem>
-        {
+        public getTreeItem(element: tree_item): vscode.TreeItem|Thenable<vscode.TreeItem> {
             const item = new vscode.TreeItem(element.label!, element.collapsibleState);
             return item;
         }
     
-        public getChildren(element : tree_item | undefined): vscode.ProviderResult<tree_item[]> 
-        {
+        public getChildren(element : tree_item | undefined): vscode.ProviderResult<tree_item[]> {
             if (element === undefined) {
                 return this.m_data;
             } else {
@@ -53,15 +50,11 @@ export namespace cwt
             }
         }
 
-
-    
-        public item_clicked(item: tree_item)
-        {
-            
+        public item_clicked(item: tree_item) {
+            // we implement this later
         }
     
-        public refresh()
-        {
+        public refresh() {
             // TODO: error/notification no workspace folder opened...
             if (vscode.workspace.workspaceFolders) {
                 this.m_data = [];
@@ -70,12 +63,10 @@ export namespace cwt
             } 
         }
 
-        private read_directory(dir: string)
-        {
+        private read_directory(dir: string) {
             fs.readdirSync(dir).forEach(file => {
                 let current = path.join(dir,file);
-                if (fs.statSync(current).isFile())
-                {
+                if (fs.statSync(current).isFile()) {
                     if(current.endsWith('.feature')) {
                         this.parse_feature_file(current);
                     } 
@@ -85,25 +76,20 @@ export namespace cwt
             });
         }
 
-        private parse_feature_file(file: string)
-        {
+        private parse_feature_file(file: string) {
             const regex_feature = new RegExp("(?<=Feature:).*");
             const regex_scenario = new RegExp("(?<=Scenario:).*");
             let reader = rd.createInterface(fs.createReadStream(file))
-            
-            // TODO check if  i++ instead of ++i
             const line_counter = ((i = 0) => () => ++i)();
 
             reader.on("line", (line : string, line_number : number = line_counter()) => {
-
                 let is_feature = line.match(regex_feature);
                 if (is_feature) {
                     this.m_data.push(new tree_item(is_feature[0], file, line_number));
                 }
                 let is_scenario = line.match(regex_scenario);
                 if (is_scenario) {
-                    this.m_data.at(-1)?.children.push(new tree_item(is_scenario[0], file, line_number));
-                    this.m_data.at(-1)?.make_collapsible();
+                    this.m_data.at(-1)?.add_child(new tree_item(is_scenario[0], file, line_number));
                 }
             });
         }
