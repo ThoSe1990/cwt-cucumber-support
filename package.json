@@ -37,6 +37,14 @@
 				"title": "cwt tree view item"
 			},
 			{
+				"command": "cwt_cucumber.context_menu_command_0",
+				"title": "context menu method 0"
+			},
+			{
+				"command": "cwt_cucumber.context_menu_command_1",
+				"title": "context menu method 1"
+			},			
+			{
 				"command": "cwt_cucumber.refresh",
 				"title": "refresh",
 				"icon": {
@@ -51,6 +59,18 @@
 					"command": "cwt_cucumber.refresh",
 					"when": "view == cwt_cucumber",
 					"group": "navigation@0"
+				}
+			],
+			"view/item/context": [
+				{
+					"command": "cwt_cucumber.context_menu_command_0",
+					"when": "view == cwt_cucumber",
+					"group": "cwt_cucumber@0"
+				},
+				{
+					"command": "cwt_cucumber.context_menu_command_1",
+					"when": "view == cwt_cucumber",
+					"group": "cwt_cucumber@1"
 				}
 			]
 		}

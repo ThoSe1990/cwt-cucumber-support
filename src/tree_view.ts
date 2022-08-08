@@ -6,8 +6,7 @@ import * as vscode from 'vscode';
 
 export namespace cwt
 {
-    class line 
-    {
+    class line {
         readonly text : string;
         readonly row : number;
         readonly length : number;
@@ -19,8 +18,7 @@ export namespace cwt
         }
     }
 
-    class tree_item extends vscode.TreeItem 
-    {
+    class tree_item extends vscode.TreeItem {
         readonly file: string;
         readonly line: line;
 
@@ -53,6 +51,17 @@ export namespace cwt
         public constructor()  {
             vscode.commands.registerCommand('cwt_cucumber.on_item_clicked', item => this.on_item_clicked(item));
             vscode.commands.registerCommand('cwt_cucumber.refresh', () => this.refresh());
+
+            vscode.commands.registerCommand('cwt_cucumber.context_menu_command_0', item => this.command_0(item));
+            vscode.commands.registerCommand('cwt_cucumber.context_menu_command_1', item => this.command_1(item));
+
+        }
+
+        public command_0(item: tree_item) {
+            console.log("context menu command 0 clickd with: ", item.label);
+        }
+        public command_1(item: tree_item) {
+            console.log("context menu command 1 clickd with: ", item.label);
         }
 
         public getTreeItem(item: tree_item): vscode.TreeItem|Thenable<vscode.TreeItem> {
