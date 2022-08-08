@@ -33,7 +33,7 @@
 		},
 		"commands": [
 			{
-				"command": "cwt_cucumber.item_clicked",
+				"command": "cwt_cucumber.on_item_clicked",
 				"title": "cwt tree view item"
 			},
 			{
