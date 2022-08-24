@@ -1,4 +1,5 @@
 
+import { exec } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as rd from 'readline';
@@ -16,6 +17,14 @@ export namespace cwt
             this.length = text.length;
             this.row = row;
         }
+    }
+
+    
+    interface debug_config {
+        type: string;
+        name: string;
+        cucumber_executable: string;
+        run_command: string;
     }
 
     class tree_item extends vscode.TreeItem {
@@ -51,10 +60,10 @@ export namespace cwt
         public constructor()  {
             vscode.commands.registerCommand('cwt_cucumber.on_item_clicked', item => this.on_item_clicked(item));
             vscode.commands.registerCommand('cwt_cucumber.refresh', () => this.refresh());
+            vscode.commands.registerCommand('cwt_cucumber.run', () => this.run());
 
             vscode.commands.registerCommand('cwt_cucumber.context_menu_command_0', item => this.command_0(item));
             vscode.commands.registerCommand('cwt_cucumber.context_menu_command_1', item => this.command_1(item));
-
         }
 
         public command_0(item: tree_item) {
@@ -94,6 +103,22 @@ export namespace cwt
                 this.read_directory(vscode.workspace.workspaceFolders[0].uri.fsPath);
                 this.event_emitter.fire(undefined);
             } 
+        }
+
+        public run() {
+            exec('cmake --version', (err, stdout, stderr) => {
+                if (err) {
+                  // node couldn't execute the command
+                  console.log("ERROR");
+                  return;
+                }
+                console.log("stdout: " + stdout);
+                console.log("stderr: " + stderr);
+              });
+            const configs = vscode.workspace.getConfiguration("launch").get("configurations") as Array<debug_config>;
+            configs.forEach(cfg => {
+                console.log(cfg.type + ' ' + cfg.name);
+            });
         }
 
         private read_directory(dir: string) {

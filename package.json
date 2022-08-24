@@ -43,7 +43,7 @@
 			{
 				"command": "cwt_cucumber.context_menu_command_1",
 				"title": "context menu method 1"
-			},			
+			},		
 			{
 				"command": "cwt_cucumber.refresh",
 				"title": "refresh",
@@ -51,12 +51,25 @@
 					"light": "src/assets/img_light/refresh.svg",
 					"dark": "src/assets/img_dark/refresh.svg"
 				}
+			},
+			{
+				"command": "cwt_cucumber.run",
+				"title": "run",
+				"icon": {
+					"light": "src/assets/run.svg",
+					"dark": "src/assets/run.svg"
+				}
 			}
 		],
 		"menus": {
 			"view/title": [
 				{
 					"command": "cwt_cucumber.refresh",
+					"when": "view == cwt_cucumber",
+					"group": "navigation@1"
+				},
+				{
+					"command": "cwt_cucumber.run",
 					"when": "view == cwt_cucumber",
 					"group": "navigation@0"
 				}
@@ -73,7 +86,22 @@
 					"group": "cwt_cucumber@1"
 				}
 			]
-		}
+		},
+		"debuggers": [
+			{
+				"type": "cwt-cucumber",
+				"label": "cwt cucumber support",
+				"configurationAttributes": {
+					"launch": {
+						"properties": {
+							"commands": {
+								"type": "array"
+							}
+						}	
+					}
+				}
+			}
+		]
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",
