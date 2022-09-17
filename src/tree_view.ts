@@ -24,7 +24,7 @@ export namespace cwt
     interface debug_config {
         type: string;
         name: string;
-        program: string;
+        program: string|undefined;
         command: string;
         cwd: string;
     }
@@ -47,6 +47,60 @@ export namespace cwt
             this.children.push(child);
         }
     }
+
+    class cucumber {
+        private cwd: string;
+        private args: string[] = [];
+        private command: string; 
+        private program: string|undefined;
+
+        constructor(cwd: string, scenario: string|undefined, command: string, program: string|undefined){
+            if (vscode.workspace.workspaceFolders) {
+                const wspace_folder = vscode.workspace.workspaceFolders[0].uri.fsPath;
+                this.cwd = cwd === undefined ?  wspace_folder : cwd.replace("${workspaceFolder}", wspace_folder);
+                this.args.push(JSON.stringify(this.cwd + "/features"));
+                if (scenario != undefined) {
+                    this.args.push("--name");
+                    this.args.push(JSON.stringify(scenario.trim()));
+                }
+                this.command = command === undefined ? 'cucumber' : command;
+                this.program = program === undefined ? undefined : program.replace("${workspaceFolder}", wspace_folder);
+            } else {
+                throw new Error("can't execute cucumber, no workspace folder is opened!");
+            }
+
+        }
+
+        public run_tests(){
+            console.log('given args:');
+            console.log(this.args);
+            if (this.program === undefined){
+                this.execute_cucumber();
+            } else {
+                var runner = spawn(this.program, {detached: false});
+                runner.on('spawn', () => {
+                    console.log(this.program + ' started!');
+                    this.execute_cucumber();
+                });
+                runner.on('exit', (code) => {
+                    console.log(this.program + ' exited with code ' + code);
+                });
+            }
+        }
+
+        private execute_cucumber() {
+            var runner = spawn(this.command , this.args , {detached: false, shell: true, cwd: this.cwd});
+			runner.stdout.on('data', data => {
+                console.log(data.toString());
+			});
+            runner.stderr.on('data', data => {
+                console.log(data.toString());
+            });
+            runner.on('exit', (code) => {
+				console.log(`QQ Child exited with code ${code}`);
+			});
+        }
+    }
     
     export class tree_view implements vscode.TreeDataProvider<tree_item>
     {
@@ -62,9 +116,15 @@ export namespace cwt
         public constructor()  {
             vscode.commands.registerCommand('cwt_cucumber.on_item_clicked', item => this.on_item_clicked(item));
             vscode.commands.registerCommand('cwt_cucumber.refresh', () => this.refresh());
-            vscode.commands.registerCommand('cwt_cucumber.run', () => this.run());
+            vscode.commands.registerCommand('cwt_cucumber.run', () => this.run(undefined));
 
-            vscode.commands.registerCommand('cwt_cucumber.context_menu_command_0', item => this.command_0(item));
+            vscode.commands.registerCommand('cwt_cucumber.context_menu_command_0', item => {
+                console.log('running:');
+                console.log(item.label);
+                console.log(item.line);
+                this.run(item.label.toString());
+            });
+            // vscode.commands.registerCommand('cwt_cucumber.context_menu_command_0', item => this.command_0(item));
             vscode.commands.registerCommand('cwt_cucumber.context_menu_command_1', item => this.command_1(item));
         }
 
@@ -99,51 +159,25 @@ export namespace cwt
         }
     
         public refresh() {
-            // TODO: error/notification no workspace folder opened...
             if (vscode.workspace.workspaceFolders) {
                 this.data = [];
                 this.read_directory(vscode.workspace.workspaceFolders[0].uri.fsPath);
                 this.event_emitter.fire(undefined);
-            } 
+            } else {
+                throw new Error("can't refresh tree view, no workspace folder is opened!");
+            }
+
         }
 
-        public run() {
+        public run(scenario: undefined|string) {
             if (vscode.workspace.workspaceFolders) {
                 const configs = vscode.workspace.getConfiguration("launch").get("configurations") as Array<debug_config>;
-                const cfg = configs[0];
-                const wspace_folder = vscode.workspace.workspaceFolders[0].uri.fsPath;
-                var cwd = cfg.cwd === undefined ?  wspace_folder : cfg.cwd.replace("${workspaceFolder}", wspace_folder);
-
-                if (cfg.program === undefined){
-                    this.execute_cucumber(cfg, cwd, undefined);
-                } else {
-                    var program = cfg.program.replace("${workspaceFolder}", wspace_folder);
-                    var runner = spawn(program, {detached: false});
-                    runner.on('spawn', () => {
-                        console.log('test program started!');
-                        this.execute_cucumber(cfg, cwd, undefined);
-                    });
-                    runner.on('exit', (code) => {
-                        console.log(`Child exited with code ${code}`);
-                    });
-                }
+                const cfg = configs[0];                
+                var cucumber_runner = new cucumber(cfg.cwd, scenario, cfg.command, cfg.program);
+                cucumber_runner.run_tests();
+            } else {
+                throw new Error("can't execute cucumber, no workspace folder is opened!");
             }
-        }
-
-        private execute_cucumber(cfg: debug_config, cwd: string, args: string|undefined) {
-            var command = cfg.command === undefined ? 'cucumber' : cfg.command;
-            var final_args = args === undefined ? cwd + '/features' : args;
-            
-            var runner = spawn(command , [final_args] , {detached: false, shell: true, cwd: cwd});
-			runner.stdout.on('data', data => {
-                console.log(data.toString());
-			});
-            runner.stderr.on('data', data => {
-                console.log(data);
-            });
-            runner.on('exit', (code) => {
-				console.log(`QQ Child exited with code ${code}`);
-			});
         }
 
         private read_directory(dir: string) {
@@ -162,7 +196,7 @@ export namespace cwt
         private parse_feature_file(file: string) {
 
             let reader = rd.createInterface(fs.createReadStream(file))
-            const line_counter = ((i = 0) => () => i++)();
+            const line_counter = ((i = 1) => () => i++)();
 
             reader.on("line", (current_line : string, line_number : number = line_counter()) => {
                 let is_feature = current_line.match(this.regex_feature);
