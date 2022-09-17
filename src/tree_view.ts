@@ -1,5 +1,6 @@
 
-import { exec } from 'child_process';
+import { ConsoleReporter } from '@vscode/test-electron';
+import { exec, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as rd from 'readline';
@@ -23,8 +24,9 @@ export namespace cwt
     interface debug_config {
         type: string;
         name: string;
-        cucumber_executable: string;
-        run_command: string;
+        program: string;
+        command: string;
+        cwd: string;
     }
 
     class tree_item extends vscode.TreeItem {
@@ -106,19 +108,42 @@ export namespace cwt
         }
 
         public run() {
-            exec('cmake --version', (err, stdout, stderr) => {
-                if (err) {
-                  // node couldn't execute the command
-                  console.log("ERROR");
-                  return;
+            if (vscode.workspace.workspaceFolders) {
+                const configs = vscode.workspace.getConfiguration("launch").get("configurations") as Array<debug_config>;
+                const cfg = configs[0];
+                const wspace_folder = vscode.workspace.workspaceFolders[0].uri.fsPath;
+                var cwd = cfg.cwd === undefined ?  wspace_folder : cfg.cwd.replace("${workspaceFolder}", wspace_folder);
+
+                if (cfg.program === undefined){
+                    this.execute_cucumber(cfg, cwd, undefined);
+                } else {
+                    var program = cfg.program.replace("${workspaceFolder}", wspace_folder);
+                    var runner = spawn(program, {detached: false});
+                    runner.on('spawn', () => {
+                        console.log('test program started!');
+                        this.execute_cucumber(cfg, cwd, undefined);
+                    });
+                    runner.on('exit', (code) => {
+                        console.log(`Child exited with code ${code}`);
+                    });
                 }
-                console.log("stdout: " + stdout);
-                console.log("stderr: " + stderr);
-              });
-            const configs = vscode.workspace.getConfiguration("launch").get("configurations") as Array<debug_config>;
-            configs.forEach(cfg => {
-                console.log(cfg.type + ' ' + cfg.name);
+            }
+        }
+
+        private execute_cucumber(cfg: debug_config, cwd: string, args: string|undefined) {
+            var command = cfg.command === undefined ? 'cucumber' : cfg.command;
+            var final_args = args === undefined ? cwd + '/features' : args;
+            
+            var runner = spawn(command , [final_args] , {detached: false, shell: true, cwd: cwd});
+			runner.stdout.on('data', data => {
+                console.log(data.toString());
+			});
+            runner.stderr.on('data', data => {
+                console.log(data);
             });
+            runner.on('exit', (code) => {
+				console.log(`QQ Child exited with code ${code}`);
+			});
         }
 
         private read_directory(dir: string) {

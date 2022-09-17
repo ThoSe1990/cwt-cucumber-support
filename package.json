@@ -94,8 +94,14 @@
 				"configurationAttributes": {
 					"launch": {
 						"properties": {
-							"commands": {
-								"type": "array"
+							"program": {
+								"type": "string"
+							},
+							"command": {
+								"type": "string"
+							},
+							"cwd": {
+								"type": "string"
 							}
 						}	
 					}
