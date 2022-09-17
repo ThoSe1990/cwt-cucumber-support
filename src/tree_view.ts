@@ -1,6 +1,4 @@
-
-import { ConsoleReporter } from '@vscode/test-electron';
-import { exec, spawn } from 'child_process';
+import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as rd from 'readline';
@@ -32,14 +30,15 @@ export namespace cwt
     class tree_item extends vscode.TreeItem {
         readonly file: string;
         readonly line: line;
-
+        readonly is_scenario: boolean;
         readonly children: tree_item[] = [];
 
-        constructor(label: string, file: string, line: line) {
+        constructor(label: string, file: string, line: line, is_scenario: boolean) {
             super(label, vscode.TreeItemCollapsibleState.None);
             this.file = file;
             this.line = line;
             this.collapsibleState = vscode.TreeItemCollapsibleState.None;
+            this.is_scenario = is_scenario;
         }
 
         public add_child (child : tree_item) {
@@ -54,26 +53,27 @@ export namespace cwt
         private command: string; 
         private program: string|undefined;
 
-        constructor(cwd: string, scenario: string|undefined, command: string, program: string|undefined){
+        constructor(features: string|undefined){
             if (vscode.workspace.workspaceFolders) {
+                const configs = vscode.workspace.getConfiguration("launch").get("configurations") as Array<debug_config>;
+                const cfg = configs[0];     
                 const wspace_folder = vscode.workspace.workspaceFolders[0].uri.fsPath;
-                this.cwd = cwd === undefined ?  wspace_folder : cwd.replace("${workspaceFolder}", wspace_folder);
-                this.args.push(JSON.stringify(this.cwd + "/features"));
-                if (scenario != undefined) {
-                    this.args.push("--name");
-                    this.args.push(JSON.stringify(scenario.trim()));
+
+                this.cwd = cfg.cwd === undefined ?  wspace_folder : cfg.cwd.replace("${workspaceFolder}", wspace_folder);
+                this.program = cfg.program === undefined ? undefined : cfg.program.replace("${workspaceFolder}", wspace_folder);
+                this.command = cfg.command === undefined ? 'cucumber' : cfg.command;
+
+                if (features === undefined) {
+                    this.args.push(JSON.stringify(this.cwd + "/features"));
+                } else {
+                    this.args.push(JSON.stringify(features));
                 }
-                this.command = command === undefined ? 'cucumber' : command;
-                this.program = program === undefined ? undefined : program.replace("${workspaceFolder}", wspace_folder);
             } else {
                 throw new Error("can't execute cucumber, no workspace folder is opened!");
             }
-
         }
 
         public run_tests(){
-            console.log('given args:');
-            console.log(this.args);
             if (this.program === undefined){
                 this.execute_cucumber();
             } else {
@@ -97,7 +97,7 @@ export namespace cwt
                 console.log(data.toString());
             });
             runner.on('exit', (code) => {
-				console.log(`QQ Child exited with code ${code}`);
+				console.log(this.command + ' exited with code ' + code);
 			});
         }
     }
@@ -117,22 +117,7 @@ export namespace cwt
             vscode.commands.registerCommand('cwt_cucumber.on_item_clicked', item => this.on_item_clicked(item));
             vscode.commands.registerCommand('cwt_cucumber.refresh', () => this.refresh());
             vscode.commands.registerCommand('cwt_cucumber.run', () => this.run(undefined));
-
-            vscode.commands.registerCommand('cwt_cucumber.context_menu_command_0', item => {
-                console.log('running:');
-                console.log(item.label);
-                console.log(item.line);
-                this.run(item.label.toString());
-            });
-            // vscode.commands.registerCommand('cwt_cucumber.context_menu_command_0', item => this.command_0(item));
-            vscode.commands.registerCommand('cwt_cucumber.context_menu_command_1', item => this.command_1(item));
-        }
-
-        public command_0(item: tree_item) {
-            console.log("context menu command 0 clickd with: ", item.label);
-        }
-        public command_1(item: tree_item) {
-            console.log("context menu command 1 clickd with: ", item.label);
+            vscode.commands.registerCommand('cwt_cucumber.context_menu_run', item => this.run_tree_item(item));
         }
 
         public getTreeItem(item: tree_item): vscode.TreeItem|Thenable<vscode.TreeItem> {
@@ -169,15 +154,18 @@ export namespace cwt
 
         }
 
-        public run(scenario: undefined|string) {
-            if (vscode.workspace.workspaceFolders) {
-                const configs = vscode.workspace.getConfiguration("launch").get("configurations") as Array<debug_config>;
-                const cfg = configs[0];                
-                var cucumber_runner = new cucumber(cfg.cwd, scenario, cfg.command, cfg.program);
-                cucumber_runner.run_tests();
-            } else {
-                throw new Error("can't execute cucumber, no workspace folder is opened!");
+        private run(feature: string|undefined) {
+            var cucumber_runner = new cucumber(feature);
+            cucumber_runner.run_tests();
+        }
+
+        private run_tree_item(item: tree_item){
+            var feature = item.file;
+            if (item.is_scenario) {
+                feature += ':'+item.line.row;
             }
+            var cucumber_runner = new cucumber(feature);
+            cucumber_runner.run_tests();
         }
 
         private read_directory(dir: string) {
@@ -201,15 +189,15 @@ export namespace cwt
             reader.on("line", (current_line : string, line_number : number = line_counter()) => {
                 let is_feature = current_line.match(this.regex_feature);
                 if (is_feature) {
-                    this.data.push(new tree_item(is_feature[0], file, new line(current_line, line_number)));
+                    this.data.push(new tree_item(is_feature[0], file, new line(current_line, line_number), false));
                 }
                 let is_scenario = current_line.match(this.regex_scenario);
                 if (is_scenario) {
-                    this.data.at(-1)?.add_child(new tree_item(is_scenario[0], file, new line(current_line, line_number)));
+                    this.data.at(-1)?.add_child(new tree_item(is_scenario[0], file, new line(current_line, line_number), true));
                 }
                 let is_scenario_outline = current_line.match(this.regex_scenario_outline);
                 if (is_scenario_outline) {
-                    this.data.at(-1)?.add_child(new tree_item(is_scenario_outline[0], file, new line(current_line, line_number)));
+                    this.data.at(-1)?.add_child(new tree_item(is_scenario_outline[0], file, new line(current_line, line_number), true));
                 }
             });
         }
