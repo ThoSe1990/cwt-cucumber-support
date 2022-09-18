@@ -1,5 +1,7 @@
+import { fail } from 'assert';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
+import G = require('glob');
 import * as path from 'path';
 import * as rd from 'readline';
 import * as vscode from 'vscode';
@@ -113,7 +115,15 @@ export namespace cwt
                 runner.stdout.on('data', data => {
                     console.log(data.toString());
                     // TODO Refactor: 
-                    tree_data.get_item_by_file_and_row(data.toString());
+                    // tree_data.get_item_by_file_and_row(data.toString());
+                    if (data.toString().match("Failing Scenarios:")) {
+                        var r = new RegExp( "(.*)(features*.+\\w+\\.feature)\\:(\\d+)", 'g');
+                        var s = data.toString();
+                        var m;
+                        while (m = r.exec(s)) {
+                            console.log(m);
+                        }
+                    }
                 });
                 runner.stderr.on('data', data => {
                     console.log(data.toString());
@@ -128,8 +138,9 @@ export namespace cwt
     
     class tree_view_data {
         private data : tree_item [] = [];
-        private readonly regex_file_and_row = new RegExp("(features*.+\\w+\\.feature)\\:(\\d+)");
 
+        private readonly regex_file_and_row = new RegExp("Scenario:.*\\#(.*)(features*.+\\w+\\.feature)\\:(\\d+)");
+        
         public add_item(item: tree_item) {
             this.data.push(item);
         }
@@ -143,14 +154,14 @@ export namespace cwt
             var current = line.match(this.regex_file_and_row);
             if (current) {
                 console.log(current);
-                var row =  Number(current![2]);
-                var file = current![1].toString();
+                var row =  Number(current![3]);
+                var file = current![2].toString();
                 this.data.forEach((feature) => {
                     var result = feature.children.find(item => 
                         item.line.row === row && path.normalize(item.file).includes(path.normalize(file))
                     );
                     if (result !== undefined) {
-                        console.log('found: ' + result.line.row);
+                        console.log('----------------- found: ' + result.line.row + ':' + result.line.text);
                         result.set_icon("passed.png"); 
                     }
                 });
