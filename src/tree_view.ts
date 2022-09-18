@@ -1,7 +1,6 @@
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { resolve } from 'path';
 import * as rd from 'readline';
 import * as vscode from 'vscode';
 
@@ -63,15 +62,8 @@ export namespace cwt
         private command: string; 
         private program: string|undefined;
 
-        public reload_tree: () => void;
-
-        private readonly regex_feature = new RegExp("Failing Scenarios:");
-
-        constructor(features: string|undefined, reload_tree : () => void){
+        constructor(features: string|undefined){
             if (vscode.workspace.workspaceFolders) {
-
-                this.reload_tree = reload_tree;
-
                 const configs = vscode.workspace.getConfiguration("launch").get("configurations") as Array<debug_config>;
                 const cfg = configs[0];     
                 const wspace_folder = vscode.workspace.workspaceFolders[0].uri.fsPath;
@@ -90,34 +82,47 @@ export namespace cwt
             }
         }
 
-        public run_tests(tree_data: tree_view_data, ) {
-                if (this.program === undefined){
-                    this.execute_cucumber(tree_data);
-                } else {
-                    var runner = spawn(this.program, {detached: false});
-                    runner.on('spawn', () => {
-                        console.log(this.program + ' started!');
-                        this.execute_cucumber(tree_data);
-                    });
-                    runner.on('exit', (code) => {
-                        console.log(this.program + ' exited with code ' + code);
-                    });
-                }
+        public async run_tests(tree_data: tree_view_data) {
+            if (this.program === undefined) {
+                return this.execute_cucumber(tree_data);
+            } else {
+                await this.launch_program();
+                return this.execute_cucumber(tree_data);
+            }
+        }
 
+        private launch_program() {
+            var self = this;
+            return new Promise(function (resolve, reject) {
+                var runner = spawn(self.program!, {detached: false});
+                runner.on('spawn', () => {
+                    console.log(self.program + ' started!');
+                    resolve(true);
+                });
+                runner.on('error', (code) =>{
+                    console.log('error: ', code);
+                    reject(code);
+                });   
+            });
         }
 
         private execute_cucumber(tree_data: tree_view_data) {
-            var runner = spawn(this.command , this.args , {detached: false, shell: true, cwd: this.cwd});
-			runner.stdout.on('data', data => {
-                console.log(data.toString());
-                tree_data.get_item_by_file_and_row(data.toString());
+            var self = this;
+            return new Promise(function (resolve, reject) {
+                var runner = spawn(self.command , self.args , {detached: false, shell: true, cwd: self.cwd});
+                runner.stdout.on('data', data => {
+                    console.log(data.toString());
+                    // TODO Refactor: 
+                    tree_data.get_item_by_file_and_row(data.toString());
+                });
+                runner.stderr.on('data', data => {
+                    console.log(data.toString());
+                });
+                runner.on('exit', (code) => {
+                    console.log(self.command + ' exited with code ' + code);
+                    resolve(code);
+                });            
             });
-            runner.stderr.on('data', data => {
-                console.log(data.toString());
-            });
-            runner.on('exit', (code) => {
-				console.log(this.command + ' exited with code ' + code);
-			});
         }
     }
     
@@ -145,6 +150,7 @@ export namespace cwt
                         item.line.row === row && path.normalize(item.file).includes(path.normalize(file))
                     );
                     if (result !== undefined) {
+                        console.log('found: ' + result.line.row);
                         result.set_icon("passed.png"); 
                     }
                 });
@@ -213,7 +219,6 @@ export namespace cwt
         }
 
         public reload_tree_data() {
-            console.log('******updating tree!!!!');
             this.event_emitter.fire(undefined);
         }
 
@@ -230,9 +235,10 @@ export namespace cwt
         }
 
         private internal_run(feature: string|undefined) {
-            var cucumber_runner = new cucumber(feature, this.reload_tree_data);
-            cucumber_runner.run_tests(this.data);
-            this.reload_tree_data();
+            var cucumber_runner = new cucumber(feature);
+            cucumber_runner.run_tests(this.data).then(() => {
+                this.reload_tree_data();
+            });
         }
 
 
