@@ -1,11 +1,8 @@
-import { fail } from 'assert';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
-import G = require('glob');
 import * as path from 'path';
 import * as rd from 'readline';
 import * as vscode from 'vscode';
-
 export namespace cwt
 {
     class line {
@@ -58,22 +55,38 @@ export namespace cwt
         }
     }
 
+    interface cucumber_results {
+        id: string;
+        uri: string;
+        elements: [{
+            line: number;
+            name: string;
+            steps: [{
+                result: {
+                    status: string;
+                }
+            }]
+        }]
+    }
+
     class cucumber {
         private cwd: string;
         private args: string[] = [];
         private command: string; 
         private program: string|undefined;
+        private test_result : string = '';
 
         constructor(features: string|undefined){
             if (vscode.workspace.workspaceFolders) {
                 const configs = vscode.workspace.getConfiguration("launch").get("configurations") as Array<debug_config>;
                 const cfg = configs[0];     
                 const wspace_folder = vscode.workspace.workspaceFolders[0].uri.fsPath;
-
                 this.cwd = cfg.cwd === undefined ?  wspace_folder : cfg.cwd.replace("${workspaceFolder}", wspace_folder);
                 this.program = cfg.program === undefined ? undefined : cfg.program.replace("${workspaceFolder}", wspace_folder);
                 this.command = cfg.command === undefined ? 'cucumber' : cfg.command;
-
+                this.args.push(JSON.stringify('--publish-quiet'));
+                this.args.push(JSON.stringify('--format'));
+                this.args.push(JSON.stringify('json'));
                 if (features === undefined) {
                     this.args.push(JSON.stringify(this.cwd + "/features"));
                 } else {
@@ -84,13 +97,32 @@ export namespace cwt
             }
         }
 
-        public async run_tests(tree_data: tree_view_data) {
+        public async run_tests() {
             if (this.program === undefined) {
-                return this.execute_cucumber(tree_data);
+                return this.execute_cucumber();
             } else {
                 await this.launch_program();
-                return this.execute_cucumber(tree_data);
+                return this.execute_cucumber();
             }
+        }
+
+        public set_test_results(tree_data: tree_view_data) {
+            var result = JSON.parse(this.test_result) as cucumber_results[];
+
+            result.forEach((feature) => {
+                var feature_icon = 'passed.png';      
+                feature.elements.forEach((scenario) => {
+                    var scenario_icon = 'passed.png';
+                    scenario.steps.forEach((step) => {
+                        if (step.result.status === 'failed') {
+                            scenario_icon = 'failed.png';
+                            feature_icon = 'failed.png';
+                        }
+                    });
+                    tree_data.get_scenario_by_uri_and_row(feature.uri, scenario.line)?.set_icon(scenario_icon);
+                });
+                tree_data.get_feature_by_uri(feature.uri)?.set_icon(feature_icon);
+            });
         }
 
         private launch_program() {
@@ -108,38 +140,27 @@ export namespace cwt
             });
         }
 
-        private execute_cucumber(tree_data: tree_view_data) {
+        private execute_cucumber() {
             var self = this;
             return new Promise(function (resolve, reject) {
                 var runner = spawn(self.command , self.args , {detached: false, shell: true, cwd: self.cwd});
                 runner.stdout.on('data', data => {
-                    console.log(data.toString());
-                    // TODO Refactor: 
-                    // tree_data.get_item_by_file_and_row(data.toString());
-                    if (data.toString().match("Failing Scenarios:")) {
-                        var r = new RegExp( "(.*)(features*.+\\w+\\.feature)\\:(\\d+)", 'g');
-                        var s = data.toString();
-                        var m;
-                        while (m = r.exec(s)) {
-                            console.log(m);
-                        }
-                    }
-                });
-                runner.stderr.on('data', data => {
-                    console.log(data.toString());
+                    self.test_result = self.test_result.concat(data.toString());
                 });
                 runner.on('exit', (code) => {
                     console.log(self.command + ' exited with code ' + code);
                     resolve(code);
-                });            
+                });    
+                runner.on('error', (code) => {
+                    console.log('error: ' + code);
+                    reject(code);
+                })        
             });
         }
     }
     
     class tree_view_data {
         private data : tree_item [] = [];
-
-        private readonly regex_file_and_row = new RegExp("Scenario:.*\\#(.*)(features*.+\\w+\\.feature)\\:(\\d+)");
         
         public add_item(item: tree_item) {
             this.data.push(item);
@@ -149,23 +170,19 @@ export namespace cwt
             return this.data;
         }
 
-        // TODO Refactor
-        public get_item_by_file_and_row(line : string){
-            var current = line.match(this.regex_file_and_row);
-            if (current) {
-                console.log(current);
-                var row =  Number(current![3]);
-                var file = current![2].toString();
-                this.data.forEach((feature) => {
-                    var result = feature.children.find(item => 
-                        item.line.row === row && path.normalize(item.file).includes(path.normalize(file))
-                    );
-                    if (result !== undefined) {
-                        console.log('----------------- found: ' + result.line.row + ':' + result.line.text);
-                        result.set_icon("passed.png"); 
-                    }
-                });
-            }
+        public get_feature_by_uri(uri : string) {
+            return this.data.find((feature) =>  
+                path.normalize(feature.file).includes(path.normalize(uri))
+            );
+        }
+
+        public get_scenario_by_uri_and_row(uri: string, line_number: number){
+            var feature = this.get_feature_by_uri(uri);
+            if (feature) {
+                return feature.children.find((scenario) => 
+                    scenario.line.row === line_number 
+                );
+            }            
         }
 
         public erase_data() {
@@ -224,9 +241,7 @@ export namespace cwt
                 this.data.erase_data();
                 this.read_directory(vscode.workspace.workspaceFolders[0].uri.fsPath);
                 this.reload_tree_data();
-            } else {
-                throw new Error("can't refresh tree view, no workspace folder is opened!");
-            }
+            } 
         }
 
         public reload_tree_data() {
@@ -247,12 +262,11 @@ export namespace cwt
 
         private internal_run(feature: string|undefined) {
             var cucumber_runner = new cucumber(feature);
-            cucumber_runner.run_tests(this.data).then(() => {
+            cucumber_runner.run_tests().then(() => {
+                cucumber_runner.set_test_results(this.data);
                 this.reload_tree_data();
             });
         }
-
-
 
         private read_directory(dir: string) {
             fs.readdirSync(dir).forEach(file => {

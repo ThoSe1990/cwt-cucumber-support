@@ -39,7 +39,7 @@
 			{
 				"command": "cwt_cucumber.context_menu_run",
 				"title": "Run"
-			},		
+			},	
 			{
 				"command": "cwt_cucumber.refresh",
 				"title": "refresh",
