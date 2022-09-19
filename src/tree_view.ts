@@ -29,6 +29,7 @@ export namespace cwt
     enum test_result {
         none,
         passed,
+        undefined,
         failed
     }
 
@@ -70,9 +71,11 @@ export namespace cwt
         private get_icon(result: test_result) {
             switch (result) {
                 case test_result.passed:
-                    return 'passed.png'
+                    return 'passed.png';
                 case test_result.failed:
-                    return 'failed.png'
+                    return 'failed.png';
+                case test_result.undefined:
+                    return 'undefined.png';
                 default:
                     return '';
             }
@@ -124,11 +127,10 @@ export namespace cwt
         public async run_tests() {
             vscode.window.showInformationMessage('Starting tests, please wait.');
             if (this.program === undefined) {
-                return this.execute_cucumber();
-            } else {
-                await this.launch_program();
-                return this.execute_cucumber();
-            }
+                throw new Error("can't execute cucumber, no test program defined in launch.json");
+            } 
+            await this.launch_program();
+            return this.execute_cucumber();
         }
 
         public set_test_results(tree_data: tree_view_data) {
@@ -137,8 +139,13 @@ export namespace cwt
                 feature.elements.forEach((scenario) => {
                     var result = test_result.passed;
                     scenario.steps.forEach((step) => {
-                        if (step.result.status === 'failed') {
-                            result = test_result.failed;
+                        switch (step.result.status) {
+                            case 'failed':
+                                result = test_result.failed;
+                                break;
+                            case 'undefined':
+                                result = test_result.undefined
+                                break;
                         }
                     });
                     tree_data.get_scenario_by_uri_and_row(feature.uri, scenario.line)?.set_test_result(result);
@@ -202,7 +209,10 @@ export namespace cwt
                                 break;
                             case test_result.failed:
                                 feature.set_test_result(test_result.failed);
-                                break;              
+                                break;     
+                            case test_result.undefined:
+                                    feature.set_test_result(test_result.undefined);
+                                    break;          
                             default:
                                 feature.set_test_result(test_result.none);
                                 break;
