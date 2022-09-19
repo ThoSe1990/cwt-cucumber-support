@@ -22,15 +22,24 @@ export namespace cwt
         type: string;
         name: string;
         program: string|undefined;
-        command: string;
         cwd: string;
     }
 
+
+    enum test_result {
+        none,
+        passed,
+        failed
+    }
+
     class tree_item extends vscode.TreeItem {
+
         readonly file: string;
         readonly line: line;
         readonly is_scenario: boolean;
         readonly children: tree_item[] = [];
+
+        private result: test_result = test_result.none;
 
         constructor(label: string, file: string, line: line, is_scenario: boolean) {
             super(label, vscode.TreeItemCollapsibleState.None);
@@ -38,7 +47,6 @@ export namespace cwt
             this.line = line;
             this.collapsibleState = vscode.TreeItemCollapsibleState.None;
             this.is_scenario = is_scenario;
-            this.set_icon("");
         }
 
         public add_child (child : tree_item) {
@@ -46,12 +54,28 @@ export namespace cwt
             this.children.push(child);
         }
 
-        public set_icon(icon_file: string) {
-            console.log(path.join(__filename, '..', '..', 'src', 'assets', icon_file));
+        public set_test_result(result: test_result) {
+            this.result = result;
+            var icon = this.get_icon(result);
             this.iconPath = {
-                light: path.join(__filename, '..', '..', 'src', 'assets', icon_file),
-                dark: path.join(__filename, '..', '..', 'src', 'assets', icon_file)
+                light: path.join(__filename, '..', '..', 'src', 'assets', icon),
+                dark: path.join(__filename, '..', '..', 'src', 'assets', icon)
             };
+        }
+
+        public get_last_result() {
+            return this.result;
+        }
+
+        private get_icon(result: test_result) {
+            switch (result) {
+                case test_result.passed:
+                    return 'passed.png'
+                case test_result.failed:
+                    return 'failed.png'
+                default:
+                    return '';
+            }
         }
     }
 
@@ -72,7 +96,6 @@ export namespace cwt
     class cucumber {
         private cwd: string;
         private args: string[] = [];
-        private command: string; 
         private program: string|undefined;
         private test_result : string = '';
 
@@ -83,21 +106,23 @@ export namespace cwt
                 const wspace_folder = vscode.workspace.workspaceFolders[0].uri.fsPath;
                 this.cwd = cfg.cwd === undefined ?  wspace_folder : cfg.cwd.replace("${workspaceFolder}", wspace_folder);
                 this.program = cfg.program === undefined ? undefined : cfg.program.replace("${workspaceFolder}", wspace_folder);
-                this.command = cfg.command === undefined ? 'cucumber' : cfg.command;
-                this.args.push(JSON.stringify('--publish-quiet'));
-                this.args.push(JSON.stringify('--format'));
-                this.args.push(JSON.stringify('json'));
+
                 if (features === undefined) {
                     this.args.push(JSON.stringify(this.cwd + "/features"));
                 } else {
                     this.args.push(JSON.stringify(features));
                 }
+                this.args.push(JSON.stringify('--publish-quiet'));
+                this.args.push(JSON.stringify('--format'));
+                this.args.push(JSON.stringify('json'));
+
             } else {
                 throw new Error("can't execute cucumber, no workspace folder is opened!");
             }
         }
 
         public async run_tests() {
+            vscode.window.showInformationMessage('Starting tests, please wait.');
             if (this.program === undefined) {
                 return this.execute_cucumber();
             } else {
@@ -108,20 +133,16 @@ export namespace cwt
 
         public set_test_results(tree_data: tree_view_data) {
             var result = JSON.parse(this.test_result) as cucumber_results[];
-
             result.forEach((feature) => {
-                var feature_icon = 'passed.png';      
                 feature.elements.forEach((scenario) => {
-                    var scenario_icon = 'passed.png';
+                    var result = test_result.passed;
                     scenario.steps.forEach((step) => {
                         if (step.result.status === 'failed') {
-                            scenario_icon = 'failed.png';
-                            feature_icon = 'failed.png';
+                            result = test_result.failed;
                         }
                     });
-                    tree_data.get_scenario_by_uri_and_row(feature.uri, scenario.line)?.set_icon(scenario_icon);
+                    tree_data.get_scenario_by_uri_and_row(feature.uri, scenario.line)?.set_test_result(result);
                 });
-                tree_data.get_feature_by_uri(feature.uri)?.set_icon(feature_icon);
             });
         }
 
@@ -143,12 +164,12 @@ export namespace cwt
         private execute_cucumber() {
             var self = this;
             return new Promise(function (resolve, reject) {
-                var runner = spawn(self.command , self.args , {detached: false, shell: true, cwd: self.cwd});
+                var runner = spawn('cucumber' , self.args , {detached: false, shell: true, cwd: self.cwd});
                 runner.stdout.on('data', data => {
                     self.test_result = self.test_result.concat(data.toString());
                 });
                 runner.on('exit', (code) => {
-                    console.log(self.command + ' exited with code ' + code);
+                    console.log('cucumber exited with code ' + code);
                     resolve(code);
                 });    
                 runner.on('error', (code) => {
@@ -168,6 +189,27 @@ export namespace cwt
 
         public get_data() {
             return this.data;
+        }
+
+        public update_feature_icons() {
+            this.data.forEach((feature) => {
+                feature.set_test_result(test_result.none);
+                feature.children.forEach((scenario) => {
+                    if (feature.get_last_result() !== test_result.failed) {   
+                        switch (scenario.get_last_result()) {
+                            case test_result.passed:
+                                feature.set_test_result(test_result.passed);
+                                break;
+                            case test_result.failed:
+                                feature.set_test_result(test_result.failed);
+                                break;              
+                            default:
+                                feature.set_test_result(test_result.none);
+                                break;
+                        }
+                    }
+                });
+            });
         }
 
         public get_feature_by_uri(uri : string) {
@@ -199,7 +241,7 @@ export namespace cwt
         private data : tree_view_data = new tree_view_data();
         private event_emitter: vscode.EventEmitter<tree_item | undefined> = new vscode.EventEmitter<tree_item | undefined>();
 
-        readonly onDidChangeTreeData ? : vscode.Event<tree_item | undefined> = this.event_emitter.event;
+        readonly onDidChangeTreeData? : vscode.Event<tree_item | undefined> = this.event_emitter.event;
    
         private readonly regex_feature = new RegExp("(?<=Feature:).*");
         private readonly regex_scenario = new RegExp("(?<=Scenario:).*");
@@ -228,7 +270,7 @@ export namespace cwt
             if (item.file === undefined) return;
             vscode.workspace.openTextDocument(item.file).then( document => {
                 vscode.window.showTextDocument(document).then( editor => {
-                        var pos = new vscode.Position(item.line.row, item.line.length);
+                        var pos = new vscode.Position(item.line.row-1, item.line.length);
                         editor.selection = new vscode.Selection(pos, pos);
                         editor.revealRange(new vscode.Range(pos, pos));
                     }
@@ -245,6 +287,7 @@ export namespace cwt
         }
 
         public reload_tree_data() {
+            this.data.update_feature_icons();
             this.event_emitter.fire(undefined);
         }
 

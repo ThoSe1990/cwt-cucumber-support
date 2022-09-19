@@ -88,9 +88,6 @@
 							"program": {
 								"type": "string"
 							},
-							"command": {
-								"type": "string"
-							},
 							"cwd": {
 								"type": "string"
 							}
